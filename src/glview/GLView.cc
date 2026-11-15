@@ -583,48 +583,82 @@ struct AxisRange {
 // axis: 0 = X-Achse, 1 = Y-Achse, 2 = Z-Achse
 AxisRange getInfiniteAxisRange(const double mvp[16], int axis)
 {
-  int col = axis * 4;
-  double dx = mvp[col + 0];  // Bildschirm-Richtung X
-  double dy = mvp[col + 1];  // Bildschirm-Richtung Y
-  double ox = mvp[12];       // Bildschirm-Ursprung X (Verschiebung)
-  double oy = mvp[13];       // Bildschirm-Ursprung Y (Verschiebung)
+  const double origin[4] = {mvp[12], mvp[13], mvp[14], mvp[15]};
+  const double direction[4] = {
+    mvp[axis * 4], mvp[axis * 4 + 1], mvp[axis * 4 + 2], mvp[axis * 4 + 3]
+  };
+  const int component[6] = {0, 0, 1, 1, 2, 2};
+  const double sign[6] = {1, -1, 1, -1, 1, -1};
 
   double tMin = -INFINITY;
   double tMax = INFINITY;
 
-  // 1. Schnitt mit den linken (-1) und rechten (+1) Bildschirmrändern für X
-  if (std::abs(dx) > 1e-12) {
-    double t1 = (-1.0 - ox) / dx;
-    double t2 = (1.0 - ox) / dx;
-    double xMin = std::min(t1, t2);
-    double xMax = std::max(t1, t2);
-    tMin = std::max(tMin, xMin);
-    tMax = std::min(tMax, xMax);
-  } else {
-    // Achse verläuft parallel zur X-Achse -> liegt sie im sichtbaren X-Bereich?
-    if (ox < -1.0 || ox > 1.0) return {0, 0, false};
-  }
+  for (int i = 0; i < 6; ++i) {
+    const int c = component[i];
+    const double a = origin[3] + sign[i] * origin[c];
+    const double b = direction[3] + sign[i] * direction[c];
 
-  // 2. Schnitt mit den unteren (-1) und oberen (+1) Bildschirmrändern für Y
-  if (std::abs(dy) > 1e-12) {
-    double t1 = (-1.0 - oy) / dy;
-    double t2 = (1.0 - oy) / dy;
-    double yMin = std::min(t1, t2);
-    double yMax = std::max(t1, t2);
-    tMin = std::max(tMin, yMin);
-    tMax = std::min(tMax, yMax);
-  } else {
-    // Achse verläuft parallel zur Y-Achse -> liegt sie im sichtbaren Y-Bereich?
-    if (oy < -1.0 || oy > 1.0) return {0, 0, false};
-  }
+    if (std::abs(b) <= 1e-12) {
+      if (a < 0.0) return {0.0, 0.0, false};
+      continue;
+    }
 
-  // Prüfen, ob ein gültiges Intervall übrig bleibt
-  if (tMin > tMax) {
-    return {0, 0, false};  // Linie verpasst den Bildschirm komplett
+    const double t = -a / b;
+    if (b > 0.0) {
+      tMin = std::max(tMin, t);
+    } else {
+      tMax = std::min(tMax, t);
+    }
+
+    if (tMin > tMax) return {0.0, 0.0, false};
   }
 
   return {tMin, tMax, true};
 }
+// AxisRange getInfiniteAxisRange(const double mvp[16], int axis)
+// {
+//   int col = axis * 4;
+//   double dx = mvp[col + 0];  // Bildschirm-Richtung X
+//   double dy = mvp[col + 1];  // Bildschirm-Richtung Y
+//   double ox = mvp[12];       // Bildschirm-Ursprung X (Verschiebung)
+//   double oy = mvp[13];       // Bildschirm-Ursprung Y (Verschiebung)
+
+//   double tMin = -INFINITY;
+//   double tMax = INFINITY;
+
+//   // 1. Schnitt mit den linken (-1) und rechten (+1) Bildschirmrändern für X
+//   if (std::abs(dx) > 1e-12) {
+//     double t1 = (-1.0 - ox) / dx;
+//     double t2 = (1.0 - ox) / dx;
+//     double xMin = std::min(t1, t2);
+//     double xMax = std::max(t1, t2);
+//     tMin = std::max(tMin, xMin);
+//     tMax = std::min(tMax, xMax);
+//   } else {
+//     // Achse verläuft parallel zur X-Achse -> liegt sie im sichtbaren X-Bereich?
+//     if (ox < -1.0 || ox > 1.0) return {0, 0, false};
+//   }
+
+//   // 2. Schnitt mit den unteren (-1) und oberen (+1) Bildschirmrändern für Y
+//   if (std::abs(dy) > 1e-12) {
+//     double t1 = (-1.0 - oy) / dy;
+//     double t2 = (1.0 - oy) / dy;
+//     double yMin = std::min(t1, t2);
+//     double yMax = std::max(t1, t2);
+//     tMin = std::max(tMin, yMin);
+//     tMax = std::min(tMax, yMax);
+//   } else {
+//     // Achse verläuft parallel zur Y-Achse -> liegt sie im sichtbaren Y-Bereich?
+//     if (oy < -1.0 || oy > 1.0) return {0, 0, false};
+//   }
+
+//   // Prüfen, ob ein gültiges Intervall übrig bleibt
+//   if (tMin > tMax) {
+//     return {0, 0, false};  // Linie verpasst den Bildschirm komplett
+//   }
+
+//   return {tMin, tMax, true};
+// }
 
 void GLView::showScalemarkers(const Color4f& col)
 {
@@ -659,108 +693,132 @@ void GLView::showScalemarkers(const Color4f& col)
   glLineWidth(this->getDPI());
   glColor3f(col.r(), col.g(), col.b());
 
-  // Take log of l, discretize, then exponentiate. This is done so that the tick
-  // denominations change every time the viewport gets 10x bigger or smaller,
-  // but stays constant in-between. l_adjusted is a step function of l.
-  const int log_l = static_cast<int>(floor(log10(l)));
-  const double l_adjusted = pow(10, log_l);
+// idee: pro achse 10 Beschriftungen egal wie gross
+  const auto x_abs_range = x_range.maxVal - x_range.minVal;
+  // const auto x_tick = x_abs_range / 10.0;
 
-  // Calculate tick width.
-  const double tick_width = l_adjusted / 10.0;
+  const auto nearest_exp_for_range = std::round(std::log10(x_abs_range));
+  const auto nearest_exp_for_distance = std::round(std::log10(l));
+  const auto best_exp = std::max(nearest_exp_for_range, nearest_exp_for_distance);
 
-  const int size_div_sm = 60;  // divisor for l to determine minor tick size
-  int line_cnt = 0;
+  const auto exp_step = best_exp - 1;
+  const auto x_tick = 2 * std::pow(10, exp_step);
 
-  size_t divs = l / tick_width;
-  for (size_t div = 0; div < divs; ++div) {
-    double i = div * tick_width;  // i represents the position along the axis
-    int size_div;
-    if (line_cnt > 0 && line_cnt % 10 == 0) {        // major tick
-      size_div = size_div_sm * .5;                   // resize to a major tick
-      GLView::decodeMarkerValue(i, l, size_div_sm);  // print number
-    } else {                                         // minor tick
-      size_div = size_div_sm;                        // set the minor tick to the standard size
+  const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
+  const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
 
-      // Draw additional labels if there are few major tick labels visible due to
-      // zoom. Because the spacing/units of major tick marks only change when the
-      // viewport changes size by a factor of 10, it can be hard to see the
-      // major tick labels when when the viewport is slightly larger than size at
-      // which the last tick spacing change occurred. When zoom level is such
-      // that very few major tick marks are visible, additional labels are drawn
-      // every 2 minor ticks. We can detect that very few major ticks are visible
-      // by checking if the viewport size is larger than the adjusted scale by
-      // only a small ratio.
-      const double more_labels_threshold = 3;
-      // draw additional labels every 2 minor ticks
-      const int more_labels_freq = 2;
-      if (line_cnt > 0 && line_cnt % more_labels_freq == 0 && l / l_adjusted < more_labels_threshold) {
-        GLView::decodeMarkerValue(i, l, size_div_sm);  // print number
+  if (x_range.visible)
+  {
+    for (auto x = range_min; x <= range_max; x += x_tick) {
+      auto x_round = std::round(x / x_tick) * x_tick;
+      if (x_round != 0) {
+        GLView::decodeMarkerValue(x_round, l, 60);
       }
     }
-    line_cnt++;
-
-    /*
-     * The length of each tick is proportional to the length of the axis
-     * (which changes with the zoom value.) l/size_div provides the
-     * proportional length
-     *
-     * Commented glVertex3d lines provide additional 'arms' for the tick
-     * the number of arms will (hopefully) eventually be driven via Preferences
-     */
-
-    // // positive axes
-    // glBegin(GL_LINES);
-    // // x
-    // glVertex3d(i, 0, 0);
-    // glVertex3d(i, -l / size_div, 0);  // 1 arm
-    // // glVertex3d(i,-l/size_div,0); glVertex3d(i,l/size_div,0); // 2 arms
-    // // glVertex3d(i,0,-l/size_div); glVertex3d(i,0,l/size_div); // 4 arms (w/ 2 arms line)
-
-    // // y
-    // glVertex3d(0, i, 0);
-    // glVertex3d(-l / size_div, i, 0);  // 1 arm
-    // // glVertex3d(-l/size_div,i,0); glVertex3d(l/size_div,i,0); // 2 arms
-    // // glVertex3d(0,i,-l/size_div); glVertex3d(0,i,l/size_div); // 4 arms (w/ 2 arms line)
-
-    // // z
-    // glVertex3d(0, 0, i);
-    // glVertex3d(-l / size_div, 0, i);  // 1 arm
-    // // glVertex3d(-l/size_div,0,i); glVertex3d(l/size_div,0,i); // 2 arms
-    // // glVertex3d(0,-l/size_div,i); glVertex3d(0,l/size_div,i); // 4 arms (w/ 2 arms line)
-    // glEnd();
-
-    // // negative axes
-    // glPushAttrib(GL_LINE_BIT);
-    // glEnable(GL_LINE_STIPPLE);
-    // glLineStipple(3, 0xAAAA);
-    // glBegin(GL_LINES);
-    // // x
-    // glVertex3d(-i, 0, 0);
-    // glVertex3d(-i, -l / size_div, 0);  // 1 arm
-    // // glVertex3d(-i,-l/size_div,0); glVertex3d(-i,l/size_div,0); // 2 arms
-    // // glVertex3d(-i,0,-l/size_div); glVertex3d(-i,0,l/size_div); // 4 arms (w/ 2 arms line)
-
-    // // y
-    // glVertex3d(0, -i, 0);
-    // glVertex3d(-l / size_div, -i, 0);  // 1 arm
-    // // glVertex3d(-l/size_div,-i,0); glVertex3d(l/size_div,-i,0); // 2 arms
-    // // glVertex3d(0,-i,-l/size_div); glVertex3d(0,-i,l/size_div); // 4 arms (w/ 2 arms line)
-
-    // // z
-    // glVertex3d(0, 0, -i);
-    // glVertex3d(-l / size_div, 0, -i);  // 1 arm
-    // // glVertex3d(-l/size_div,0,-i); glVertex3d(l/size_div,0,-i); // 2 arms
-    // // glVertex3d(0,-l/size_div,-i); glVertex3d(0,l/size_div,-i); // 4 arms (w/ 2 arms line)
-    // glEnd();
-    // glPopAttrib();
   }
+
+  // // Take log of l, discretize, then exponentiate. This is done so that the tick
+  // // denominations change every time the viewport gets 10x bigger or smaller,
+  // // but stays constant in-between. l_adjusted is a step function of l.
+  // const int log_l = static_cast<int>(floor(log10(l)));
+  // const double l_adjusted = pow(10, log_l);
+
+  // // Calculate tick width.
+  // const double tick_width = l_adjusted / 10.0;
+
+  // const int size_div_sm = 60;  // divisor for l to determine minor tick size
+  // int line_cnt = 0;
+
+  // size_t divs = l / tick_width;
+  // for (size_t div = 0; div < divs; ++div) {
+  //   double i = div * tick_width;  // i represents the position along the axis
+  //   int size_div;
+  //   if (line_cnt > 0 && line_cnt % 10 == 0) {        // major tick
+  //     size_div = size_div_sm * .5;                   // resize to a major tick
+  //     GLView::decodeMarkerValue(i, l, size_div_sm);  // print number
+  //   } else {                                         // minor tick
+  //     size_div = size_div_sm;                        // set the minor tick to the standard size
+
+  //     // Draw additional labels if there are few major tick labels visible due to
+  //     // zoom. Because the spacing/units of major tick marks only change when the
+  //     // viewport changes size by a factor of 10, it can be hard to see the
+  //     // major tick labels when when the viewport is slightly larger than size at
+  //     // which the last tick spacing change occurred. When zoom level is such
+  //     // that very few major tick marks are visible, additional labels are drawn
+  //     // every 2 minor ticks. We can detect that very few major ticks are visible
+  //     // by checking if the viewport size is larger than the adjusted scale by
+  //     // only a small ratio.
+  //     const double more_labels_threshold = 3;
+  //     // draw additional labels every 2 minor ticks
+  //     const int more_labels_freq = 2;
+  //     if (line_cnt > 0 && line_cnt % more_labels_freq == 0 && l / l_adjusted < more_labels_threshold) {
+  //       GLView::decodeMarkerValue(i, l, size_div_sm);  // print number
+  //     }
+  //   }
+  //   line_cnt++;
+
+  //   /*
+  //    * The length of each tick is proportional to the length of the axis
+  //    * (which changes with the zoom value.) l/size_div provides the
+  //    * proportional length
+  //    *
+  //    * Commented glVertex3d lines provide additional 'arms' for the tick
+  //    * the number of arms will (hopefully) eventually be driven via Preferences
+  //    */
+
+  //   // positive axes
+  //   glBegin(GL_LINES);
+  //   // x
+  //   glVertex3d(i, 0, 0);
+  //   glVertex3d(i, -l / size_div, 0);  // 1 arm
+  //   // glVertex3d(i,-l/size_div,0); glVertex3d(i,l/size_div,0); // 2 arms
+  //   // glVertex3d(i,0,-l/size_div); glVertex3d(i,0,l/size_div); // 4 arms (w/ 2 arms line)
+
+  //   // y
+  //   glVertex3d(0, i, 0);
+  //   glVertex3d(-l / size_div, i, 0);  // 1 arm
+  //   // glVertex3d(-l/size_div,i,0); glVertex3d(l/size_div,i,0); // 2 arms
+  //   // glVertex3d(0,i,-l/size_div); glVertex3d(0,i,l/size_div); // 4 arms (w/ 2 arms line)
+
+  //   // z
+  //   glVertex3d(0, 0, i);
+  //   glVertex3d(-l / size_div, 0, i);  // 1 arm
+  //   // glVertex3d(-l/size_div,0,i); glVertex3d(l/size_div,0,i); // 2 arms
+  //   // glVertex3d(0,-l/size_div,i); glVertex3d(0,l/size_div,i); // 4 arms (w/ 2 arms line)
+  //   glEnd();
+
+  //   // negative axes
+  //   glPushAttrib(GL_LINE_BIT);
+  //   glEnable(GL_LINE_STIPPLE);
+  //   glLineStipple(3, 0xAAAA);
+  //   glBegin(GL_LINES);
+  //   // x
+  //   glVertex3d(-i, 0, 0);
+  //   glVertex3d(-i, -l / size_div, 0);  // 1 arm
+  //   // glVertex3d(-i,-l/size_div,0); glVertex3d(-i,l/size_div,0); // 2 arms
+  //   // glVertex3d(-i,0,-l/size_div); glVertex3d(-i,0,l/size_div); // 4 arms (w/ 2 arms line)
+
+  //   // y
+  //   glVertex3d(0, -i, 0);
+  //   glVertex3d(-l / size_div, -i, 0);  // 1 arm
+  //   // glVertex3d(-l/size_div,-i,0); glVertex3d(l/size_div,-i,0); // 2 arms
+  //   // glVertex3d(0,-i,-l/size_div); glVertex3d(0,-i,l/size_div); // 4 arms (w/ 2 arms line)
+
+  //   // z
+  //   glVertex3d(0, 0, -i);
+  //   glVertex3d(-l / size_div, 0, -i);  // 1 arm
+  //   // glVertex3d(-l/size_div,0,-i); glVertex3d(l/size_div,0,-i); // 2 arms
+  //   // glVertex3d(0,-l/size_div,-i); glVertex3d(0,l/size_div,-i); // 4 arms (w/ 2 arms line)
+  //   glEnd();
+  //   glPopAttrib();
+  // }
 }
 
 void GLView::decodeMarkerValue(double i, double l, int size_div_sm)
 {
   // We draw both at once the positive and corresponding negative number.
   const std::string pos_number_str = STR(i);
-  const std::string neg_number_str = "-" + pos_number_str;
+  // const std::string neg_number_str = "-" + pos_number_str;
 
   const float font_size = (l / size_div_sm);
   const float baseline_offset = font_size / 5;  // hovering a bit above axis
@@ -775,16 +833,16 @@ void GLView::decodeMarkerValue(double i, double l, int size_div_sm)
   using PlaneVertexDraw =
     std::function<void(float x, float y, float font_height, float baseline_offset)>;
 
-  const PlaneVertexDraw axis_draw_planes[3] = {
+  const PlaneVertexDraw axis_draw_planes[1] = {
     [](float x, float y, float /*fh*/, float bl) {
       glVertex3d(x, y + bl, 0);  // x-label along x-axis; font drawn above line
     },
-    [](float x, float y, float fh, float bl) {
-      glVertex3d(-y + (fh + bl), x, 0);  // y-label along y-axis; font below
-    },
-    [](float x, float y, float fh, float bl) {
-      glVertex3d(-y + (fh + bl), 0, x);  // z-label along z-axis; font below
-    },
+    // [](float x, float y, float fh, float bl) {
+    //   glVertex3d(-y + (fh + bl), x, 0);  // y-label along y-axis; font below
+    // },
+    // [](float x, float y, float fh, float bl) {
+    //   glVertex3d(-y + (fh + bl), 0, x);  // z-label along z-axis; font below
+    // },
   };
   bool needs_glend = false;
   for (const PlaneVertexDraw& axis_draw : axis_draw_planes) {
@@ -799,11 +857,13 @@ void GLView::decodeMarkerValue(double i, double l, int size_div_sm)
     };
 
     hershey::DrawTextHershey(pos_number_str, i, 0, hershey::TextAlign::kCenter, font_size, plot_fun);
-    if (needs_glend) glEnd();
-    needs_glend = false;
-    hershey::DrawTextHershey(neg_number_str, -i - prefix_offset, 0, hershey::TextAlign::kCenter,
-                             font_size, plot_fun);
-    if (needs_glend) glEnd();
-    needs_glend = false;
+    glEnd();
+    // hershey::DrawTextHershey(pos_number_str, i, 0, hershey::TextAlign::kCenter, font_size, plot_fun);
+    // if (needs_glend) glEnd();
+    // needs_glend = false;
+    // hershey::DrawTextHershey(neg_number_str, -i - prefix_offset, 0, hershey::TextAlign::kCenter,
+    //                          font_size, plot_fun);
+    // if (needs_glend) glEnd();
+    // needs_glend = false;
   }
 }
