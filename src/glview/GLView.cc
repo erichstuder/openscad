@@ -574,8 +574,93 @@ void GLView::showObject(const SelectedObject& obj, const Vector3d& eyedir)
   }
 }
 
+struct AxisRange {
+  double minVal;
+  double maxVal;
+  bool visible;
+};
+
+// axis: 0 = X-Achse, 1 = Y-Achse, 2 = Z-Achse
+AxisRange getInfiniteAxisRange(const double mvp[16], int axis)
+{
+  int col = axis * 4;
+  double dx = mvp[col + 0];  // Bildschirm-Richtung X
+  double dy = mvp[col + 1];  // Bildschirm-Richtung Y
+  double ox = mvp[12];       // Bildschirm-Ursprung X (Verschiebung)
+  double oy = mvp[13];       // Bildschirm-Ursprung Y (Verschiebung)
+
+  double tMin = -INFINITY;
+  double tMax = INFINITY;
+
+  // 1. Schnitt mit den linken (-1) und rechten (+1) Bildschirmrändern für X
+  if (std::abs(dx) > 1e-12) {
+    double t1 = (-1.0 - ox) / dx;
+    double t2 = (1.0 - ox) / dx;
+    double xMin = std::min(t1, t2);
+    double xMax = std::max(t1, t2);
+    tMin = std::max(tMin, xMin);
+    tMax = std::min(tMax, xMax);
+  } else {
+    // Achse verläuft parallel zur X-Achse -> liegt sie im sichtbaren X-Bereich?
+    if (ox < -1.0 || ox > 1.0) return {0, 0, false};
+  }
+
+  // 2. Schnitt mit den unteren (-1) und oberen (+1) Bildschirmrändern für Y
+  if (std::abs(dy) > 1e-12) {
+    double t1 = (-1.0 - oy) / dy;
+    double t2 = (1.0 - oy) / dy;
+    double yMin = std::min(t1, t2);
+    double yMax = std::max(t1, t2);
+    tMin = std::max(tMin, yMin);
+    tMax = std::min(tMax, yMax);
+  } else {
+    // Achse verläuft parallel zur Y-Achse -> liegt sie im sichtbaren Y-Bereich?
+    if (oy < -1.0 || oy > 1.0) return {0, 0, false};
+  }
+
+  // Prüfen, ob ein gültiges Intervall übrig bleibt
+  if (tMin > tMax) {
+    return {0, 0, false};  // Linie verpasst den Bildschirm komplett
+  }
+
+  return {tMin, tMax, true};
+}
+
 void GLView::showScalemarkers(const Color4f& col)
 {
+  // // How much do you see?
+  // auto distance cam.zoomValue(); //TODO better name for this funciton.
+  // auto fov = cam.fov; // angle between the top and bottom of the viewport, in degrees
+  // cam.object_trans[0]
+  // cam.object_trans[1]
+  // cam.object_trans[2]
+
+  // cam.object_rot[0]
+  // cam.object_rot[1]
+  // cam.object_rot[2]
+
+  // damit lässt sich der Breiten-Winkel berechnen
+  // cam.pixel_width;
+  // cam.pixel_height;
+
+  // cam.projection // das ist ein Problem, glaub ich!
+  // cam.setVpf
+
+  this->modelview;
+  this->projection;
+
+  GLdouble mvp[16];  // projection * modelview
+  for (int col = 0; col < 4; ++col) {
+    for (int row = 0; row < 4; ++row) {
+      mvp[col * 4 + row] = 0;
+      for (int k = 0; k < 4; ++k) mvp[col * 4 + row] += projection[k * 4 + row] * modelview[col * 4 + k];
+    }
+  }
+
+  volatile AxisRange x_range = getInfiniteAxisRange(mvp, 0);
+  volatile AxisRange y_range = getInfiniteAxisRange(mvp, 1);
+  volatile AxisRange z_range = getInfiniteAxisRange(mvp, 2);
+
   // Add scale ticks on large axes
   auto l = cam.zoomValue();
   glLineWidth(this->getDPI());
@@ -630,51 +715,51 @@ void GLView::showScalemarkers(const Color4f& col)
      * the number of arms will (hopefully) eventually be driven via Preferences
      */
 
-    // positive axes
-    glBegin(GL_LINES);
-    // x
-    glVertex3d(i, 0, 0);
-    glVertex3d(i, -l / size_div, 0);  // 1 arm
-    // glVertex3d(i,-l/size_div,0); glVertex3d(i,l/size_div,0); // 2 arms
-    // glVertex3d(i,0,-l/size_div); glVertex3d(i,0,l/size_div); // 4 arms (w/ 2 arms line)
+    // // positive axes
+    // glBegin(GL_LINES);
+    // // x
+    // glVertex3d(i, 0, 0);
+    // glVertex3d(i, -l / size_div, 0);  // 1 arm
+    // // glVertex3d(i,-l/size_div,0); glVertex3d(i,l/size_div,0); // 2 arms
+    // // glVertex3d(i,0,-l/size_div); glVertex3d(i,0,l/size_div); // 4 arms (w/ 2 arms line)
 
-    // y
-    glVertex3d(0, i, 0);
-    glVertex3d(-l / size_div, i, 0);  // 1 arm
-    // glVertex3d(-l/size_div,i,0); glVertex3d(l/size_div,i,0); // 2 arms
-    // glVertex3d(0,i,-l/size_div); glVertex3d(0,i,l/size_div); // 4 arms (w/ 2 arms line)
+    // // y
+    // glVertex3d(0, i, 0);
+    // glVertex3d(-l / size_div, i, 0);  // 1 arm
+    // // glVertex3d(-l/size_div,i,0); glVertex3d(l/size_div,i,0); // 2 arms
+    // // glVertex3d(0,i,-l/size_div); glVertex3d(0,i,l/size_div); // 4 arms (w/ 2 arms line)
 
-    // z
-    glVertex3d(0, 0, i);
-    glVertex3d(-l / size_div, 0, i);  // 1 arm
-    // glVertex3d(-l/size_div,0,i); glVertex3d(l/size_div,0,i); // 2 arms
-    // glVertex3d(0,-l/size_div,i); glVertex3d(0,l/size_div,i); // 4 arms (w/ 2 arms line)
-    glEnd();
+    // // z
+    // glVertex3d(0, 0, i);
+    // glVertex3d(-l / size_div, 0, i);  // 1 arm
+    // // glVertex3d(-l/size_div,0,i); glVertex3d(l/size_div,0,i); // 2 arms
+    // // glVertex3d(0,-l/size_div,i); glVertex3d(0,l/size_div,i); // 4 arms (w/ 2 arms line)
+    // glEnd();
 
-    // negative axes
-    glPushAttrib(GL_LINE_BIT);
-    glEnable(GL_LINE_STIPPLE);
-    glLineStipple(3, 0xAAAA);
-    glBegin(GL_LINES);
-    // x
-    glVertex3d(-i, 0, 0);
-    glVertex3d(-i, -l / size_div, 0);  // 1 arm
-    // glVertex3d(-i,-l/size_div,0); glVertex3d(-i,l/size_div,0); // 2 arms
-    // glVertex3d(-i,0,-l/size_div); glVertex3d(-i,0,l/size_div); // 4 arms (w/ 2 arms line)
+    // // negative axes
+    // glPushAttrib(GL_LINE_BIT);
+    // glEnable(GL_LINE_STIPPLE);
+    // glLineStipple(3, 0xAAAA);
+    // glBegin(GL_LINES);
+    // // x
+    // glVertex3d(-i, 0, 0);
+    // glVertex3d(-i, -l / size_div, 0);  // 1 arm
+    // // glVertex3d(-i,-l/size_div,0); glVertex3d(-i,l/size_div,0); // 2 arms
+    // // glVertex3d(-i,0,-l/size_div); glVertex3d(-i,0,l/size_div); // 4 arms (w/ 2 arms line)
 
-    // y
-    glVertex3d(0, -i, 0);
-    glVertex3d(-l / size_div, -i, 0);  // 1 arm
-    // glVertex3d(-l/size_div,-i,0); glVertex3d(l/size_div,-i,0); // 2 arms
-    // glVertex3d(0,-i,-l/size_div); glVertex3d(0,-i,l/size_div); // 4 arms (w/ 2 arms line)
+    // // y
+    // glVertex3d(0, -i, 0);
+    // glVertex3d(-l / size_div, -i, 0);  // 1 arm
+    // // glVertex3d(-l/size_div,-i,0); glVertex3d(l/size_div,-i,0); // 2 arms
+    // // glVertex3d(0,-i,-l/size_div); glVertex3d(0,-i,l/size_div); // 4 arms (w/ 2 arms line)
 
-    // z
-    glVertex3d(0, 0, -i);
-    glVertex3d(-l / size_div, 0, -i);  // 1 arm
-    // glVertex3d(-l/size_div,0,-i); glVertex3d(l/size_div,0,-i); // 2 arms
-    // glVertex3d(0,-l/size_div,-i); glVertex3d(0,l/size_div,-i); // 4 arms (w/ 2 arms line)
-    glEnd();
-    glPopAttrib();
+    // // z
+    // glVertex3d(0, 0, -i);
+    // glVertex3d(-l / size_div, 0, -i);  // 1 arm
+    // // glVertex3d(-l/size_div,0,-i); glVertex3d(l/size_div,0,-i); // 2 arms
+    // // glVertex3d(0,-l/size_div,-i); glVertex3d(0,l/size_div,-i); // 4 arms (w/ 2 arms line)
+    // glEnd();
+    // glPopAttrib();
   }
 }
 
