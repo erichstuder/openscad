@@ -646,20 +646,13 @@ void GLView::showScalemarkers(const Color4f& col)
   // cam.projection // das ist ein Problem, glaub ich!
   // cam.setVpf
 
-  this->modelview;
-  this->projection;
+  const Eigen::Map<const Matrix4d> p(this->projection);
+  const Eigen::Map<const Matrix4d> mv(this->modelview);
+  const Matrix4d mvp = p * mv;
 
-  GLdouble mvp[16];  // projection * modelview
-  for (int col = 0; col < 4; ++col) {
-    for (int row = 0; row < 4; ++row) {
-      mvp[col * 4 + row] = 0;
-      for (int k = 0; k < 4; ++k) mvp[col * 4 + row] += projection[k * 4 + row] * modelview[col * 4 + k];
-    }
-  }
-
-  volatile AxisRange x_range = getInfiniteAxisRange(mvp, 0);
-  volatile AxisRange y_range = getInfiniteAxisRange(mvp, 1);
-  volatile AxisRange z_range = getInfiniteAxisRange(mvp, 2);
+  volatile AxisRange x_range = getInfiniteAxisRange(mvp.data(), 0);
+  volatile AxisRange y_range = getInfiniteAxisRange(mvp.data(), 1);
+  volatile AxisRange z_range = getInfiniteAxisRange(mvp.data(), 2);
 
   // Add scale ticks on large axes
   auto l = cam.zoomValue();
