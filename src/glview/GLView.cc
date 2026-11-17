@@ -599,7 +599,9 @@ AxisRange getInfiniteAxisRange(const double mvp[16], int axis)
     const double b = direction[3] + sign[i] * direction[c];
 
     if (std::abs(b) <= 1e-12) {
-      if (a < 0.0) return {0.0, 0.0, false};
+      if (a < 0.0) {
+        return {0.0, 0.0, false};
+      }
       continue;
     }
 
@@ -610,7 +612,9 @@ AxisRange getInfiniteAxisRange(const double mvp[16], int axis)
       tMax = std::min(tMax, t);
     }
 
-    if (tMin > tMax) return {0.0, 0.0, false};
+    if (tMin > tMax) {
+      return {0.0, 0.0, false};
+    }
   }
 
   return {tMin, tMax, true};
@@ -688,34 +692,66 @@ void GLView::showScalemarkers(const Color4f& col)
   volatile AxisRange y_range = getInfiniteAxisRange(mvp.data(), 1);
   volatile AxisRange z_range = getInfiniteAxisRange(mvp.data(), 2);
 
-  // Add scale ticks on large axes
   auto l = cam.zoomValue();
-  glLineWidth(this->getDPI());
-  glColor3f(col.r(), col.g(), col.b());
 
-// idee: pro achse 10 Beschriftungen egal wie gross
-  const auto x_abs_range = x_range.maxVal - x_range.minVal;
-  // const auto x_tick = x_abs_range / 10.0;
+  if (cam.projection == Camera::ProjectionType::ORTHOGONAL ) {
+    const Eigen::Vector4d dView = mv * Eigen::Vector4d(1, 0, 0, 0);  // local X direction
+    const double ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
 
-  const auto nearest_exp_for_range = std::round(std::log10(x_abs_range));
-  const auto nearest_exp_for_distance = std::round(std::log10(l));
-  const auto best_exp = std::max(nearest_exp_for_range, nearest_exp_for_distance);
+    const auto x_tick_real = l / ratio / 20;
+    const auto x_tick = 2 * std::pow(10, std::round(std::log10(x_tick_real))); // round to closest power of 10.
 
-  const auto exp_step = best_exp - 1;
-  const auto x_tick = 2 * std::pow(10, exp_step);
+    const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
+    const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
 
-  const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
-  const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
-
-  if (x_range.visible)
-  {
-    for (auto x = range_min; x <= range_max; x += x_tick) {
-      auto x_round = std::round(x / x_tick) * x_tick;
-      if (x_round != 0) {
-        GLView::decodeMarkerValue(x_round, l, 60);
+    // TODO: eliminate the check for isfinite
+    if (x_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
+    {
+      for (auto x = range_min; x <= range_max; x += x_tick) {
+        auto x_round = std::round(x / x_tick) * x_tick;
+        if (x_round != 0) {
+          GLView::decodeMarkerValue(x_round, l, 60);
+        }
       }
     }
+
+
+
+    // }
   }
+
+
+//   // Add scale ticks on large axes
+//   auto l = cam.zoomValue();
+//   glLineWidth(this->getDPI());
+//   glColor3f(col.r(), col.g(), col.b());
+
+// // idee: pro achse 10 Beschriftungen egal wie gross
+//   const auto x_abs_range = x_range.maxVal - x_range.minVal;
+//   // const auto x_tick = x_abs_range / 10.0;
+
+//   const auto nearest_exp_for_range = std::round(std::log10(x_abs_range));
+//   const auto nearest_exp_for_distance = std::round(std::log10(l));
+//   const auto best_exp = std::max(nearest_exp_for_range, nearest_exp_for_distance);
+
+//   const auto exp_step = best_exp - 1;
+//   const auto x_tick = 2 * std::pow(10, exp_step);
+
+//   const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
+//   const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
+
+//   if (x_range.visible)
+//   {
+//     for (auto x = range_min; x <= range_max; x += x_tick) {
+//       auto x_round = std::round(x / x_tick) * x_tick;
+//       if (x_round != 0) {
+//         GLView::decodeMarkerValue(x_round, l, 60);
+//       }
+//     }
+//   }
+
+
+
 
   // // Take log of l, discretize, then exponentiate. This is done so that the tick
   // // denominations change every time the viewport gets 10x bigger or smaller,
