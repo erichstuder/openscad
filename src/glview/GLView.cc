@@ -699,8 +699,12 @@ void GLView::showScalemarkers(const Color4f& col)
     Eigen::Vector4d dView = mv * Eigen::Vector4d(1, 0, 0, 0);
     double ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
 
-    const auto x_tick_real = l / ratio / 20;
-    const auto x_tick = 2 * std::pow(10, std::round(std::log10(x_tick_real))); // round to closest power of 10.
+    // const auto x_tick_real = l / ratio / 20;
+    // const auto x_tick = 2 * std::pow(10, std::round(std::log10(x_tick_real))); // round to closest power of 10.
+    // const auto x_tick_real = l / ratio / 130;
+    const auto x_tick_real = l / 130;
+    const auto x_tick = std::pow(10, std::round(std::log10(x_tick_real))); // round to closest power of 10.
+    // const auto minor_label_tick = 2 * x_tick;
 
     auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
     auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
@@ -708,109 +712,147 @@ void GLView::showScalemarkers(const Color4f& col)
     // TODO: eliminate the check for isfinite
     if (x_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
     {
-      for (auto x = range_min; x <= range_max; x += x_tick) {
+      for (auto x = range_min; x <= range_max; x += x_tick) { //TODO: überlegen, ob es wirklich so am besten ist mit doubles addieren.
+        const auto n = static_cast<int>(std::round(x / x_tick));
+        // const auto minor_label_n = static_cast<int>(std::round(x / minor_label_tick));
+
+        if(n == 0) {
+          continue;
+        }
+
         auto x_round = std::round(x / x_tick) * x_tick;
-        if (x_round != 0) {
+
+        // TODO: Zoom-In in perspective suddenly makes labels smaller.
+        // TODO: negative lines must be dotted
+        if(std::abs(n) % 10 == 0) {
+          // if((std::abs(n) % 20 == 0) || (x_range_abs /(10*x_tick) < 8)) { // only draw uneven labels if less than ? major labels are visible.
+          //   GLView::decodeMarkerValue(x_round, l, 60, Axis::X);
+          // }
+
+          // GLView::decodeMarkerValue(x_round, l, 60, Axis::X);
+          glBegin(GL_LINES);
+          glVertex3d(x_round, 0, 0);
+          glVertex3d(x_round, -l/30, 0);
+          glEnd();
+        } else {
+          // if(std::abs(n) % 2 == 0 && x_range_abs /(10*x_tick) < 2) { // only draw minor labels if not more than ? major labels are visible.
+          //   GLView::decodeMarkerValue(x_round, l, 60, Axis::X);
+          // }
+          glBegin(GL_LINES);
+          glVertex3d(x_round, 0, 0);
+          glVertex3d(x_round, -l/60, 0);
+          glEnd();
+        }
+
+
+        // calculate the tick for the labels
+        // auto x_tick_label = std::pow(10, std::round(std::log10(x_tick / l * 200))) * x_tick; //TODO: can be moved out.
+        // auto x_tick_label = std::round((x_tick / l * 200) / x_tick) * x_tick;
+        auto x_tick_label_raw = l / 4;
+
+        // const auto x_tick_label    = std::round(x_tick_label_raw /       x_tick ) *       x_tick;
+        // const auto x_tick_label_2  = std::round(x_tick_label_raw / ( 2 * x_tick)) * ( 2 * x_tick);
+        // const auto x_tick_label_5  = std::round(x_tick_label_raw / ( 5 * x_tick)) * ( 5 * x_tick);
+        // const auto x_tick_label_10 = std::round(x_tick_label_raw / (10 * x_tick)) * (10 * x_tick);
+
+        double x_tick_label = 100*x_tick;
+        double n_corr = 100;
+
+        if((x_tick_label_raw - 50*x_tick) < x_tick_label) {
+          x_tick_label = 50*x_tick;
+          n_corr = 50;
+        }
+
+        if((x_tick_label_raw - 20*x_tick) < x_tick_label) {
+          x_tick_label = 20*x_tick;
+          n_corr = 20;
+        }
+
+        if((x_tick_label_raw - 10*x_tick) < x_tick_label) {
+          x_tick_label = 10*x_tick;
+          n_corr = 10;
+        }
+
+        if((x_tick_label_raw - 5*x_tick) < x_tick_label) {
+          x_tick_label = 5*x_tick;
+          n_corr = 5;
+        }
+
+        if((x_tick_label_raw - 2*x_tick) < x_tick_label) {
+          x_tick_label = 2*x_tick;
+          n_corr = 2;
+        }
+
+        if((x_tick_label_raw - x_tick) < x_tick_label) {
+          x_tick_label = x_tick;
+          n_corr = 1;
+        }
+
+        // const auto x_tick_label = std::round(x_tick_label_raw / rounding_point) * rounding_point;
+
+        // const auto n_corr = static_cast<int>(std::round(x_tick_label / x_tick));
+
+        const auto n_label = static_cast<int>(std::round(x / x_tick_label)) * n_corr;
+
+        if(n_label == 0) {
+          continue;
+        }
+
+        if(n == n_label) {
           GLView::decodeMarkerValue(x_round, l, 60, Axis::X);
         }
       }
     }
 
-    //y
-    dView = mv * Eigen::Vector4d(0, 1, 0, 0);
-    ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
+    // //y
+    // dView = mv * Eigen::Vector4d(0, 1, 0, 0);
+    // ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
 
-    const auto y_tick_real = l / ratio / 20;
-    const auto y_tick = 2 * std::pow(10, std::round(std::log10(y_tick_real))); // round to closest power of 10.
+    // const auto y_tick_real = l / ratio / 20;
+    // const auto y_tick = 2 * std::pow(10, std::round(std::log10(y_tick_real))); // round to closest power of 10.
 
-    range_min = std::round((y_range.minVal - y_tick) / y_tick) * y_tick;
-    range_max = std::round((y_range.maxVal + y_tick) / y_tick) * y_tick;
+    // range_min = std::round((y_range.minVal - y_tick) / y_tick) * y_tick;
+    // range_max = std::round((y_range.maxVal + y_tick) / y_tick) * y_tick;
 
-    // TODO: eliminate the check for isfinite
-    if (y_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
-    {
-      for (auto y = range_min; y <= range_max; y += y_tick) {
-        auto y_round = std::round(y / y_tick) * y_tick;
-        if (y_round != 0) {
-          GLView::decodeMarkerValue(y_round, l, 60, Axis::Y);
-        }
-      }
-    }
+    // // TODO: eliminate the check for isfinite
+    // if (y_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
+    // {
+    //   for (auto y = range_min; y <= range_max; y += y_tick) {
+    //     auto y_round = std::round(y / y_tick) * y_tick;
+    //     if (y_round != 0) {
+    //       GLView::decodeMarkerValue(y_round, l, 60, Axis::Y);
+    //       glBegin(GL_LINES);
+    //       glVertex3d(0, y_round, 0);
+    //       glVertex3d(-l/30, y_round, 0);
+    //       glEnd();
+    //     }
+    //   }
+    // }
 
-    //z
-    dView = mv * Eigen::Vector4d(0, 0, 1, 0);
-    ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
+    // //z
+    // dView = mv * Eigen::Vector4d(0, 0, 1, 0);
+    // ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
 
-    const auto z_tick_real = l / ratio / 20;
-    const auto z_tick = 2 * std::pow(10, std::round(std::log10(z_tick_real))); // round to closest power of 10.
+    // const auto z_tick_real = l / ratio / 20;
+    // const auto z_tick = 2 * std::pow(10, std::round(std::log10(z_tick_real))); // round to closest power of 10.
 
-    range_min = std::round((z_range.minVal - z_tick) / z_tick) * z_tick;
-    range_max = std::round((z_range.maxVal + z_tick) / z_tick) * z_tick;
+    // range_min = std::round((z_range.minVal - z_tick) / z_tick) * z_tick;
+    // range_max = std::round((z_range.maxVal + z_tick) / z_tick) * z_tick;
 
-    // TODO: eliminate the check for isfinite
-    if (z_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
-    {
-      for (auto z = range_min; z <= range_max; z += z_tick) {
-        auto z_round = std::round(z / z_tick) * z_tick;
-        if (z_round != 0) {
-          GLView::decodeMarkerValue(z_round, l, 60, Axis::Z);
-        }
-      }
-    }
-
-
-  // } else {
-  //   const Eigen::Vector4d dView = mv * Eigen::Vector4d(1, 0, 0, 0);  // local X direction
-  //   const double ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
-
-  //   const auto x_tick_real = l / ratio / 20;
-  //   const auto x_tick = 2 * std::pow(10, std::round(std::log10(x_tick_real))); // round to closest power of 10.
-
-  //   const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
-  //   const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
-
-  //   // TODO: eliminate the check for isfinite
-  //   if (x_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
-  //   {
-  //     for (auto x = range_min; x <= range_max; x += x_tick) {
-  //       auto x_round = std::round(x / x_tick) * x_tick;
-  //       if (x_round != 0) {
-  //         GLView::decodeMarkerValue(x_round, l, 60*l/140); // TODO correct *l/140 or so
-  //       }
-  //     }
-  //   }
-  // }
-
-
-//   // Add scale ticks on large axes
-//   auto l = cam.zoomValue();
-//   glLineWidth(this->getDPI());
-//   glColor3f(col.r(), col.g(), col.b());
-
-// // idee: pro achse 10 Beschriftungen egal wie gross
-//   const auto x_abs_range = x_range.maxVal - x_range.minVal;
-//   // const auto x_tick = x_abs_range / 10.0;
-
-//   const auto nearest_exp_for_range = std::round(std::log10(x_abs_range));
-//   const auto nearest_exp_for_distance = std::round(std::log10(l));
-//   const auto best_exp = std::max(nearest_exp_for_range, nearest_exp_for_distance);
-
-//   const auto exp_step = best_exp - 1;
-//   const auto x_tick = 2 * std::pow(10, exp_step);
-
-//   const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
-//   const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
-
-//   if (x_range.visible)
-//   {
-//     for (auto x = range_min; x <= range_max; x += x_tick) {
-//       auto x_round = std::round(x / x_tick) * x_tick;
-//       if (x_round != 0) {
-//         GLView::decodeMarkerValue(x_round, l, 60);
-//       }
-//     }
-//   }
-
+    // // TODO: eliminate the check for isfinite
+    // if (z_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
+    // {
+    //   for (auto z = range_min; z <= range_max; z += z_tick) {
+    //     auto z_round = std::round(z / z_tick) * z_tick;
+    //     if (z_round != 0) {
+    //       GLView::decodeMarkerValue(z_round, l, 60, Axis::Z);
+    //       glBegin(GL_LINES);
+    //       glVertex3d(0, 0, z_round);
+    //       glVertex3d(-l/30, 0, z_round);
+    //       glEnd();
+    //     }
+    //   }
+    // }
 
 
 
