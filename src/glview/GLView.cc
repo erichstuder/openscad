@@ -688,21 +688,22 @@ void GLView::showScalemarkers(const Color4f& col)
   const Eigen::Map<const Matrix4d> mv(this->modelview);
   const Matrix4d mvp = p * mv;
 
-  volatile AxisRange x_range = getInfiniteAxisRange(mvp.data(), 0);
-  volatile AxisRange y_range = getInfiniteAxisRange(mvp.data(), 1);
-  volatile AxisRange z_range = getInfiniteAxisRange(mvp.data(), 2);
+  AxisRange x_range = getInfiniteAxisRange(mvp.data(), 0);
+  AxisRange y_range = getInfiniteAxisRange(mvp.data(), 1);
+  AxisRange z_range = getInfiniteAxisRange(mvp.data(), 2);
 
   auto l = cam.zoomValue();
 
-  if (cam.projection == Camera::ProjectionType::ORTHOGONAL ) {
-    const Eigen::Vector4d dView = mv * Eigen::Vector4d(1, 0, 0, 0);  // local X direction
-    const double ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
+  // if (cam.projection == Camera::ProjectionType::ORTHOGONAL ) {
+    //x
+    Eigen::Vector4d dView = mv * Eigen::Vector4d(1, 0, 0, 0);
+    double ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
 
     const auto x_tick_real = l / ratio / 20;
     const auto x_tick = 2 * std::pow(10, std::round(std::log10(x_tick_real))); // round to closest power of 10.
 
-    const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
-    const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
+    auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
+    auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
 
     // TODO: eliminate the check for isfinite
     if (x_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
@@ -710,15 +711,75 @@ void GLView::showScalemarkers(const Color4f& col)
       for (auto x = range_min; x <= range_max; x += x_tick) {
         auto x_round = std::round(x / x_tick) * x_tick;
         if (x_round != 0) {
-          GLView::decodeMarkerValue(x_round, l, 60);
+          GLView::decodeMarkerValue(x_round, l, 60, Axis::X);
+        }
+      }
+    }
+
+    //y
+    dView = mv * Eigen::Vector4d(0, 1, 0, 0);
+    ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
+
+    const auto y_tick_real = l / ratio / 20;
+    const auto y_tick = 2 * std::pow(10, std::round(std::log10(y_tick_real))); // round to closest power of 10.
+
+    range_min = std::round((y_range.minVal - y_tick) / y_tick) * y_tick;
+    range_max = std::round((y_range.maxVal + y_tick) / y_tick) * y_tick;
+
+    // TODO: eliminate the check for isfinite
+    if (y_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
+    {
+      for (auto y = range_min; y <= range_max; y += y_tick) {
+        auto y_round = std::round(y / y_tick) * y_tick;
+        if (y_round != 0) {
+          GLView::decodeMarkerValue(y_round, l, 60, Axis::Y);
+        }
+      }
+    }
+
+    //z
+    dView = mv * Eigen::Vector4d(0, 0, 1, 0);
+    ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
+
+    const auto z_tick_real = l / ratio / 20;
+    const auto z_tick = 2 * std::pow(10, std::round(std::log10(z_tick_real))); // round to closest power of 10.
+
+    range_min = std::round((z_range.minVal - z_tick) / z_tick) * z_tick;
+    range_max = std::round((z_range.maxVal + z_tick) / z_tick) * z_tick;
+
+    // TODO: eliminate the check for isfinite
+    if (z_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
+    {
+      for (auto z = range_min; z <= range_max; z += z_tick) {
+        auto z_round = std::round(z / z_tick) * z_tick;
+        if (z_round != 0) {
+          GLView::decodeMarkerValue(z_round, l, 60, Axis::Z);
         }
       }
     }
 
 
+  // } else {
+  //   const Eigen::Vector4d dView = mv * Eigen::Vector4d(1, 0, 0, 0);  // local X direction
+  //   const double ratio = std::hypot(dView.x(), dView.y()) / dView.head<3>().norm();
 
-    // }
-  }
+  //   const auto x_tick_real = l / ratio / 20;
+  //   const auto x_tick = 2 * std::pow(10, std::round(std::log10(x_tick_real))); // round to closest power of 10.
+
+  //   const auto range_min = std::round((x_range.minVal - x_tick) / x_tick) * x_tick;
+  //   const auto range_max = std::round((x_range.maxVal + x_tick) / x_tick) * x_tick;
+
+  //   // TODO: eliminate the check for isfinite
+  //   if (x_range.visible && std::isfinite(range_min) && std::isfinite(range_max) )
+  //   {
+  //     for (auto x = range_min; x <= range_max; x += x_tick) {
+  //       auto x_round = std::round(x / x_tick) * x_tick;
+  //       if (x_round != 0) {
+  //         GLView::decodeMarkerValue(x_round, l, 60*l/140); // TODO correct *l/140 or so
+  //       }
+  //     }
+  //   }
+  // }
 
 
 //   // Add scale ticks on large axes
@@ -850,7 +911,7 @@ void GLView::showScalemarkers(const Color4f& col)
   // }
 }
 
-void GLView::decodeMarkerValue(double i, double l, int size_div_sm)
+void GLView::decodeMarkerValue(double i, double l, int size_div_sm, Axis axis)
 {
   // We draw both at once the positive and corresponding negative number.
   const std::string pos_number_str = STR(i);
@@ -866,22 +927,27 @@ void GLView::decodeMarkerValue(double i, double l, int size_div_sm)
   // Draw functions that help map 2D axis label drawings into their plane.
   // Since we're just on axis, no need for fancy affine transformation,
   // just calling glVertex3d() with coordinates in the right plane.
-  using PlaneVertexDraw =
-    std::function<void(float x, float y, float font_height, float baseline_offset)>;
+  using PlaneVertexDraw = std::function<void(float x, float y, float font_height, float baseline_offset)>;
 
-  const PlaneVertexDraw axis_draw_planes[1] = {
-    [](float x, float y, float /*fh*/, float bl) {
-      glVertex3d(x, y + bl, 0);  // x-label along x-axis; font drawn above line
-    },
-    // [](float x, float y, float fh, float bl) {
-    //   glVertex3d(-y + (fh + bl), x, 0);  // y-label along y-axis; font below
-    // },
-    // [](float x, float y, float fh, float bl) {
-    //   glVertex3d(-y + (fh + bl), 0, x);  // z-label along z-axis; font below
-    // },
+  PlaneVertexDraw axis_draw_planes;
+  switch (axis) {
+    case Axis::X:
+      axis_draw_planes = [](float x, float y, float fh, float bl) {
+          glVertex3d(x, y + bl, 0);  // x-label along x-axis; font drawn above line
+        };
+      break;
+    case Axis::Y:
+      axis_draw_planes = [](float x, float y, float fh, float bl) {
+        glVertex3d(-y + (fh + bl), x, 0);  // y-label along y-axis; font below
+      };
+      break;
+    case Axis::Z:
+      axis_draw_planes = [](float x, float y, float fh, float bl) {
+        glVertex3d(-y + (fh + bl), 0, x);  // z-label along z-axis; font below
+      };
   };
   bool needs_glend = false;
-  for (const PlaneVertexDraw& axis_draw : axis_draw_planes) {
+  // for (const PlaneVertexDraw& axis_draw : axis_draw_planes) {
     // We get 'plot instructions', a sequence of vertices. Translate into gl ops
     const auto plot_fun = [&](bool pen_down, float x, float y) {
       if (!pen_down) {  // Start a new line, coordinates just move not draw
@@ -889,7 +955,7 @@ void GLView::decodeMarkerValue(double i, double l, int size_div_sm)
         glBegin(GL_LINE_STRIP);
         needs_glend = true;
       }
-      axis_draw(x, y, font_size, baseline_offset);
+      axis_draw_planes(x, y, font_size, baseline_offset);
     };
 
     hershey::DrawTextHershey(pos_number_str, i, 0, hershey::TextAlign::kCenter, font_size, plot_fun);
@@ -901,5 +967,5 @@ void GLView::decodeMarkerValue(double i, double l, int size_div_sm)
     //                          font_size, plot_fun);
     // if (needs_glend) glEnd();
     // needs_glend = false;
-  }
+  // }
 }

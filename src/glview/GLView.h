@@ -91,9 +91,15 @@ public:
   void showObject(const SelectedObject& pt, const Vector3d& eyedir);
 
 private:
+  enum class Axis {
+    X,
+    Y,
+    Z,
+  };
+
   void showCrosshairs(const Color4f& col);
   void showAxes(const Color4f& col);
   void showSmallaxes(const Color4f& col);
   void showScalemarkers(const Color4f& col);
-  void decodeMarkerValue(double i, double l, int size_div_sm);
+  void decodeMarkerValue(double i, double l, int size_div_sm, Axis axis); // TODO: could this be static?
 };
